@@ -1,8 +1,16 @@
 {
-  "name": "koppun-skia-renderer",
+  "name": "skia-frames",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
-  "scripts": {"demo": "node demo.mjs"},
-  "dependencies": {"@napi-rs/canvas": "1.1.0"}
+  "license": "MIT",
+  "bin": {
+    "skia-frames": "cli.mjs"
+  },
+  "scripts": {
+    "demo": "node cli.mjs examples/hello/scene.mjs",
+    "test": "node test/smoke.mjs"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^1.1.0"
+  }
 }

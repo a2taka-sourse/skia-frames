@@ -1,56 +1,91 @@
-# Remotion Skia Renderer
+# skia-frames
 
-**8,858枚を4分57秒で描画（約29.8 fps、メモリ8 GB・12並列）。** 長尺映像「骨粉史」で、Remotionの章タイトルや図表の描画をSkiaへ移したときの実測です。短縮時間を出すには、同じ素材とフレーム範囲での比較が必要です。
+描画関数を一つ書けば、透過PNGの連番を CPU の全コアで並列に描き出す Node.js ツールです。
+テロップ・図表・年表など、映像に重ねる2Dのレイヤーを、ブラウザを立ち上げずに作れます。
+
+![lower-third の例を背景に重ねたもの](docs/demo.gif)
 
 ## Quick start
 
-Node.js 24で確認済みです。サンプルを6秒分、1920×1080の透過PNG 180枚として出力します。
+Node.js 20 以上で動きます（24 で確認）。
 
 ```sh
 npm install
-npm run demo -- 4
+npx skia-frames examples/hello/scene.mjs --workers 4
+ffmpeg -framerate 30 -i frames/hello/frame-%05d.png -c:v libx264 -pix_fmt yuv420p hello.mp4
 ```
 
-出力先は `frames/demo-4/` です。
+## 自分のシーンを作る
 
-## 自分の素材で使う
+`scene.mjs` に設定と `draw` 関数を書きます。`ctx` は [@napi-rs/canvas](https://github.com/Brooooooklyn/canvas) の2D context で、毎フレーム透明に消してから渡されます。
 
-入力は章ごとのJSONです。`npm run demo -- 4` が作る `props/ch-demo.json` を雛形に、`title`、秒数の `duration`、30 fpsでの `durationInFrames` を指定します。`props/ch01.json` として保存し、`STEP=1` を環境変数に設定して `node render_skia.mjs ch01 4` を実行します。RemotionのJSXを使う場合は描画ロジックの移植が必要です。
+```js
+export const config = { width: 1920, height: 1080, fps: 30, durationInFrames: 180 };
 
-[制作事例「骨粉史」](https://www.youtube.com/watch?v=yG7qadPqosU)
+export async function setup(props) {}             // 省略可。ワーカーごとに1回（フォントや画像の読み込み）
+export function isStatic(frame, props) {}          // 省略可。true なら直前のコマと同じ絵
+export function draw(ctx, frame, props, state) {   // state は setup の戻り値
+  ctx.fillStyle = '#fff';
+  ctx.font = '96px sans-serif';
+  ctx.fillText(`frame ${frame}`, 100, 200);
+}
+```
+
+動きを付ける関数 `interpolate`・`spring`・`Easing` を `src/anim.mjs` に入れてあります。Remotion の同名の関数と同じ考え方で使えますが、Remotion の JSX をそのまま動かすことはできません。
+
+## オプション
+
+| オプション | 内容 |
+| --- | --- |
+| `--out DIR` | 出力先（既定は `frames/<シーン名>`） |
+| `--workers N` | 並列数（既定は CPU のコア数） |
+| `--props file.json` | `setup`・`isStatic`・`draw` に渡すデータ |
+| `--from F` `--to F` | 描くフレームの範囲 |
+| `--resume` | 壊れたPNGと欠けたコマだけ描き直す |
+| `--concat` | `isStatic` が true のコマを描かず、FFmpeg の concat 用リストを書き出す |
+| `--prefix NAME` | ファイル名の頭（既定は `frame-`） |
+
+`--concat` を付けたときは、表示されるコマンドで動画にします。
+
+```sh
+ffmpeg -f concat -safe 0 -i frames/lower-third/concat.txt -vsync cfr -r 30 -c:v libx264 -pix_fmt yuv420p out.mp4
+```
+
+## 例
+
+| 例 | 内容 |
+| --- | --- |
+| `examples/hello` | 文字が動くだけの最小の例 |
+| `examples/lower-third` | 名前と肩書きのテロップ。止まっている区間を `isStatic` で省く |
+| `examples/timeline` | 長尺の歴史映像で使った年表と章タイトルの描画。素材なしのダミーデータで動く |
+
+## 向いている用途
+
+- 背景動画の上に重ねる、テロップ・図表・年表・字幕のレイヤー
+- メモリの少ないPCで、Chromium を使う描画（Remotion など）が重いとき
+- 長尺を区切って描き、途中で止まっても続きから再開したいとき
+
+3D、動画素材の埋め込み、CSS のレイアウトは扱いません。それらはブラウザで描く道具を使ってください。
 
 ## 仕組み
 
-- `render_skia.mjs` が描画対象のフレームを選び、まとまりごとにワーカーへ割り当てます。途中で再実行する場合に備えて既存PNGの検査も行います。
-- `skia_renderer.mjs` が章の情報をバッファーへ描画します。フォントや画像は各ワーカーの処理内で再利用します。
-- 描画が終わったら、必要なPNGと描画区間のカバレッジを検査します。
+- フレームを16枚ずつ worker_threads に配り、各ワーカーはシーンを一度だけ読み込んで描き続けます。
+- 書き出したPNGは、末尾の IEND チャンクがあるかで完成を確かめます。描画のあとに全コマを検査し、問題があれば番号を出して終了コード1で止まります。
+- `isStatic` で省いたコマは、concat リストの表示時間で埋めます。
 
-## 制作時の計測
+## 実例・実測
 
-| 描画経路 | 対象 | 並列数 | 枚数 | 描画時間 | 描画速度 |
-| --- | --- | ---: | ---: | ---: | ---: |
-| Remotion / Chromium（ANGLE） | ch04の一部 | 4 | 300 | 26.9秒 | 約11.1 fps |
-| Skia | ch00〜ch04の描画対象 | 12 | 8,858 | 297秒 | 約29.8 fps |
+約86分の歴史映像「[骨粉史](https://www.youtube.com/watch?v=yG7qadPqosU)」で、章タイトルと図表のレイヤーに使いました（`examples/timeline` の元になった描画です）。
+Ryzen 9 5900HX・メモリ8 GB・12並列で、8,858枚を4分57秒（約29.8枚/秒）で描画しました。
 
-制作時のPCはRyzen 9 5900HX、メモリ8 GB。区間と並列数は各計測で異なります。表の速度は生成したPNG枚数を描画時間で割った値です。FFmpegでの合成・エンコードは別工程です。
-
-## デモを動かす
-
-Node.jsとnpmが必要です。Node.js 24と `@napi-rs/canvas` 1.1.0で確認しました。
+## テスト
 
 ```sh
-npm install
-npm run demo -- 4
+npm test
 ```
 
-サンプルの章を自動生成し、`frames/demo-4/` に6秒分のPNGを180枚出力します。ワーカー1本でも同じデータを描画できます。
+`hello` を180枚描いて全PNGを検査し、`lower-third` の concat リストの合計が6秒になることを確かめます。
 
-```sh
-npm run demo -- 1
-```
+## License
 
-FFmpegがある場合はMP4にできます。
-
-```sh
-ffmpeg -framerate 30 -i frames/demo-4/element-%05d.png -c:v libx264 -pix_fmt yuv420p demo.mp4
-```
+MIT
