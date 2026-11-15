@@ -1,4 +1,6 @@
-# 骨粉史のSkiaレンダラー
+# Remotion Skia Renderer
+
+A parallel Skia renderer for chapter overlays described in JSON. Includes a runnable demo. Arbitrary Remotion JSX compositions require a separate port.
 
 長尺の歴史映像「骨粉史」の制作で、Remotionで組んだ画面のうち、章タイトルや図表などを描画する処理をSkiaに移しました。元の脚本から渡す章ごとのデータを読み、Node.jsのワーカースレッドで1920×1080の透過PNGを出力します。実制作では、背景や音声と合わせる工程をFFmpegで実行しました。[公開映像](https://www.youtube.com/watch?v=yG7qadPqosU)
 
