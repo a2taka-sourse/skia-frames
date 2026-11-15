@@ -1,8 +1,23 @@
 # Remotion Skia Renderer
 
-A parallel Skia renderer for chapter overlays described in JSON. Includes a runnable demo. Arbitrary Remotion JSX compositions require a separate port.
+**8,858枚を4分57秒で描画（約29.8 fps、メモリ8 GB・12並列）。** 長尺映像「骨粉史」で、Remotionの章タイトルや図表の描画をSkiaへ移したときの実測です。短縮時間を出すには、同じ素材とフレーム範囲での比較が必要です。
 
-長尺の歴史映像「骨粉史」の制作で、Remotionで組んだ画面のうち、章タイトルや図表などを描画する処理をSkiaに移しました。元の脚本から渡す章ごとのデータを読み、Node.jsのワーカースレッドで1920×1080の透過PNGを出力します。実制作では、背景や音声と合わせる工程をFFmpegで実行しました。[公開映像](https://www.youtube.com/watch?v=yG7qadPqosU)
+## Quick start
+
+Node.js 24で確認済みです。サンプルを6秒分、1920×1080の透過PNG 180枚として出力します。
+
+```sh
+npm install
+npm run demo -- 4
+```
+
+出力先は `frames/demo-4/` です。
+
+## 自分の素材で使う
+
+入力は章ごとのJSONです。`npm run demo -- 4` が作る `props/ch-demo.json` を雛形に、`title`、秒数の `duration`、30 fpsでの `durationInFrames` を指定します。`props/ch01.json` として保存し、`STEP=1` を環境変数に設定して `node render_skia.mjs ch01 4` を実行します。RemotionのJSXを使う場合は描画ロジックの移植が必要です。
+
+[制作事例「骨粉史」](https://www.youtube.com/watch?v=yG7qadPqosU)
 
 ## 仕組み
 
